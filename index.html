@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>aid</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body {
+      background: white;
+      color: black;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .header {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      display: flex;
+      align-items: center;
+    }
+    .avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 2px solid black;
+      object-fit: cover;
+    }
+    .score {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    .content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+    .question-container {
+      width: 100%;
+      transition: transform 0.5s ease;
+    }
+    .question {
+      font-size: 20px;
+      margin-bottom: 15px;
+      text-align: center;
+      padding: 0 10px;
+      word-break: break-word;
+    }
+    .options {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .option-btn {
+      background: black;
+      color: white;
+      border: none;
+      padding: 12px 16px;
+      cursor: pointer;
+      font-size: 16px;
+      border-radius: 12px;
+      min-width: 80px;
+      outline: none;
+      text-align: center;
+    }
+    .option-btn:focus {
+      outline: none;
+    }
+    .option-btn:active {
+      background: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img id="userAvatar" class="avatar" alt="avatar">
+  </div>
+  <div class="score" id="score-container">Баллы: <span id="score">0</span></div>
+
+  <div class="content">
+    <div class="question-container" id="question-container">
+      <div class="question" id="question">Загружается вопрос...</div>
+      <div class="options" id="options"></div>
+    </div>
+  </div>
+
+  <script>
+    let score = 0;
+    let difficulty = 1;
+    const scoreEl = document.getElementById("score");
+    const questionEl = document.getElementById("question");
+    const optionsEl = document.getElementById("options");
+    const questionContainer = document.getElementById("question-container");
+
+    async function fetchWords(count = 3) {
+      try {
+        // Используем рабочий API русских слов
+        const res = await fetch(`https://api.datamuse.com/words?sp=?????????&max=${count}&md=f&v=ru`);
+        const data = await res.json();
+        const russianWords = data.map(item => item.word).filter(w => /^[а-яё]+$/i.test(w));
+        if (russianWords.length < count) return await fetchWords(count);
+        return russianWords.slice(0, count);
+      } catch (e) {
+        console.error("Ошибка загрузки слов через API:", e);
+        return ["пример", "тест", "слово"];
+      }
+    }
+
+    async function loadQuestion() {
+      const words = await fetchWords(3 + Math.floor(difficulty / 2));
+      const correct = words[0];
+
+      let sentence;
+      let opts;
+
+      if (difficulty < 3) {
+        sentence = `Выберите правильное слово: ___`;
+        opts = shuffle(words.slice(0, 3));
+      } else if (difficulty < 6) {
+        sentence = `Как правильно вставить букву: ${maskWord(correct)}`;
+        opts = generateLetterOptions(correct);
+      } else {
+        sentence = `Поставь ударение в слове: ${correct}`;
+        opts = generateAccentOptions(correct);
+      }
+
+      renderQuestion(sentence, opts, correct);
+    }
+
+    function maskWord(word) {
+      if (word.length < 3) return word;
+      const i = Math.floor(Math.random() * word.length);
+      return word.substring(0, i) + ".." + word.substring(i + 1);
+    }
+
+    function generateLetterOptions(word) {
+      const letters = "аеёиоуыэюя";
+      const correct = word;
+      const wrong1 = maskWord(word).replace("..", letters[Math.floor(Math.random() * letters.length)]);
+      const wrong2 = maskWord(word).replace("..", letters[Math.floor(Math.random() * letters.length)]);
+      return shuffle([correct, wrong1, wrong2]);
+    }
+
+    function generateAccentOptions(word) {
+      if (word.length < 3) return [word];
+      const opts = [];
+      for (let i = 1; i < Math.min(word.length, 4); i++) {
+        opts.push(word.substring(0, i) + "'" + word.substring(i));
+      }
+      return shuffle([word, ...opts.slice(0, 2)]);
+    }
+
+    function renderQuestion(text, options, correct) {
+      questionEl.textContent = text;
+      optionsEl.innerHTML = "";
+      options.forEach(opt => {
+        const btn = document.createElement("button");
+        btn.textContent = opt;
+        btn.className = "option-btn";
+        btn.onclick = () => handleAnswer(opt, correct);
+        optionsEl.appendChild(btn);
+      });
+    }
+
+    function shuffle(arr) {
+      return [...arr].sort(() => Math.random() - 0.5);
+    }
+
+    function handleAnswer(answer, correct) {
+      questionContainer.style.transition = 'transform 0.5s ease';
+      questionContainer.style.transform = 'translateY(100%)';
+      setTimeout(() => {
+        checkAnswer(answer, correct);
+        questionContainer.style.transition = 'none';
+        questionContainer.style.transform = 'translateY(-100%)';
+        setTimeout(() => {
+          questionContainer.style.transition = 'transform 0.5s ease';
+          questionContainer.style.transform = 'translateY(0)';
+        }, 50);
+      }, 500);
+    }
+
+    function checkAnswer(answer, correct) {
+      if (answer.replace("'", "") === correct) {
+        score++;
+        difficulty++;
+      } else if (score > 0) {
+        score--;
+        if (difficulty > 1) difficulty--;
+      }
+      scoreEl.textContent = score;
+      loadQuestion();
+    }
+
+    function initTelegram() {
+      if (window.Telegram && Telegram.WebApp) {
+        const user = Telegram.WebApp.initDataUnsafe.user;
+        if (user && user.photo_url) {
+          document.getElementById("userAvatar").src = user.photo_url;
+        }
+      }
+    }
+
+    initTelegram();
+    loadQuestion();
+  </script>
+</body>
+</html>
